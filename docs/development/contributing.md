@@ -74,9 +74,10 @@ uv run --frozen --only-group dev pre-commit run --all-files --show-diff-on-failu
 ## Writing Tests
 
 Choose tests that validate the behavior affected by your change. Reuse existing
-shared tests where applicable. For sampling behavior, use `sampling_mode` (or
-`noncomp_sampling_api` for leakage/loss trajectories) to test features across
-supported modes and let new modes inherit applicable tests.
+shared tests where applicable. Use `sampling_mode` for ordinary/survivor sampling,
+`importance_sampling_mode` for forced-fault sampling, or `noncomp_sampling_api`
+for leakage/loss trajectories. These fixtures test features across supported
+modes and let new modes inherit applicable tests.
 
 Check that each test exercises the behavior it claims to cover. Configuration
 alone may not establish this: optimization can remove relevant work, and
@@ -112,6 +113,17 @@ retain small representative checks in Debug.
     just py-test
     just test
     ```
+
+### GPU behavioral tests
+
+The `sampling_mode` fixture includes HIP and CUDA in FP64 with automatic tier
+selection. Each compiled program retains its own sampler, with a 65-shot batch
+limit to exercise batching and partial batches with bounded workspace. CPU and
+GPU modes share the behavioral assertions; identical random rows across
+backends are not required. Forced-fault sampling, noncomputational trajectories,
+and the CPU compiler-profile matrix keep their own fixtures.
+
+GPU cases skip when their backend or device is unavailable.
 
 ## Code Coverage
 
