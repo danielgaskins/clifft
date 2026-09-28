@@ -1,6 +1,8 @@
 """Python integration tests for clifft.compile and clifft.sample."""
 
 import warnings
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -15,6 +17,7 @@ from utils_conformance import (
     SMALL_CIRCUIT_SHOTS,
     CpuSamplingMode,
     SamplingMode,
+    expectation_atol,
     skip_unavailable_thread_layout,
 )
 
@@ -429,7 +432,9 @@ class TestSample:
         # Conditional X reverses the T|+> azimuth before Rz adds pi/8.
         azimuth = np.where(first == 0, np.pi / 4, -np.pi / 4)
         expected = np.column_stack((np.full(shots, 2**-2.5), np.cos(azimuth + np.pi / 8)))
-        np.testing.assert_allclose(result.exp_vals, expected, atol=1e-12, rtol=0)
+        np.testing.assert_allclose(
+            result.exp_vals, expected, atol=expectation_atol(sampling_mode, fp64=1e-12), rtol=0
+        )
 
 
 class TestStatevector:
@@ -1047,12 +1052,15 @@ class TestSampleSurvivors:
             assert result.observables.sum() == result.logical_errors
             expected = [2**-2.5, np.sin(np.pi / 8) / np.sqrt(2)]
             np.testing.assert_allclose(
-                result.exp_vals[:, :2], np.broadcast_to(expected, (passed, 2)), atol=1e-12, rtol=0
+                result.exp_vals[:, :2],
+                np.broadcast_to(expected, (passed, 2)),
+                atol=expectation_atol(sampling_mode, fp64=1e-12),
+                rtol=0,
             )
             np.testing.assert_allclose(
                 result.exp_vals[:, 2],
                 1 - 2 * result.measurements[:, 1].astype(int),
-                atol=1e-12,
+                atol=expectation_atol(sampling_mode, fp64=1e-12),
                 rtol=0,
             )
 
@@ -1148,9 +1156,28 @@ class TestSampleSurvivors:
         np.testing.assert_array_equal(first.observables, replay.observables)
 
     @pytest.mark.parametrize("non_clifford", [False, True], ids=["clifford", "non-clifford"])
-    @pytest.mark.parametrize("k", [None, 1], ids=["ordinary", "fixed-fault"])
     def test_final_postselection_filters_seeded_rows(
-        self, sampling_mode: CpuSamplingMode, non_clifford: bool, k: int | None
+        self, sampling_mode: SamplingMode, non_clifford: bool
+    ) -> None:
+        self._assert_final_postselection_filters_seeded_rows(
+            sampling_mode, sampling_mode.sample_survivors, non_clifford
+        )
+
+    @pytest.mark.parametrize("non_clifford", [False, True], ids=["clifford", "non-clifford"])
+    def test_final_postselection_filters_fixed_fault_rows(
+        self, importance_sampling_mode: CpuSamplingMode, non_clifford: bool
+    ) -> None:
+        self._assert_final_postselection_filters_seeded_rows(
+            importance_sampling_mode,
+            partial(importance_sampling_mode.sample_k_survivors, k=1),
+            non_clifford,
+        )
+
+    def _assert_final_postselection_filters_seeded_rows(
+        self,
+        sampling_mode: SamplingMode,
+        sample_survivors: Callable[..., Any],
+        non_clifford: bool,
     ) -> None:
         circuit = "H 0 1\n" + ("T 0 1\n" if non_clifford else "")
         circuit += (
@@ -1166,18 +1193,8 @@ class TestSampleSurvivors:
         assert (selected.peak_active_width > 0) == non_clifford
         # A terminal detector leaves all random draws unchanged, allowing exact
         # comparison with the corresponding subset of unselected output rows.
-        if k is None:
-            reference = sampling_mode.sample_survivors(
-                unselected, 131, seed=9186, keep_records=True
-            )
-            result = sampling_mode.sample_survivors(selected, 131, seed=9186, keep_records=True)
-        else:
-            reference = sampling_mode.sample_k_survivors(
-                unselected, 131, k=k, seed=9186, keep_records=True
-            )
-            result = sampling_mode.sample_k_survivors(
-                selected, 131, k=k, seed=9186, keep_records=True
-            )
+        reference = sample_survivors(unselected, 131, seed=9186, keep_records=True)
+        result = sample_survivors(selected, 131, seed=9186, keep_records=True)
         survivors = reference.detectors[:, 0] == 0
         assert reference.passed_shots == 131
         assert 0 < result.passed_shots < result.total_shots
@@ -1394,7 +1411,9 @@ class TestSyndromeNormalization:
                 np.cos(azimuths[:, 1] + np.pi / 8),
             )
         )
-        np.testing.assert_allclose(result.exp_vals, expected, atol=1e-12, rtol=0)
+        np.testing.assert_allclose(
+            result.exp_vals, expected, atol=expectation_atol(sampling_mode, fp64=1e-12), rtol=0
+        )
 
     def test_normalize_syndromes_multiple_observables_xord(
         self, sampling_mode: SamplingMode
