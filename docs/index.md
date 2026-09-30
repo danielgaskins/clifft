@@ -96,6 +96,38 @@ For QEC workflows, Clifft also supports detector-based post-selection, survivor 
 [Quick Start](getting-started/quickstart.md){ .md-button .md-button--primary }
 [Try the Playground]({{ playground_url }}){ .md-button }
 
+## What's New in 0.11.0
+
+Clifft 0.11.0 continues improving CPU sampling through
+[active-width scheduling](guide/compilation.md#active-width-scheduling) and
+sampling noise only when it is needed. The opt-in scheduler searches for
+operation orders with lower peak active width or less work at larger widths;
+deferred noise draws let postselected shots avoid later noise work after
+rejection.
+
+Early testing suggested that Clifft could be competitive with Stim on some
+Clifford error-detection circuits. The new
+[Sinter-compatible sampler](guide/sinter.md) makes those workloads accessible
+through Sinter's experiment collection tools and is a first step toward
+exploring broader QEC workflows.
+
+Experimental GPU work also continues, exploring workloads that could benefit
+from GPU memory capacity and bandwidth. The [AMD HIP
+backend](development/hip-backend.md) gains cooperative execution for wider
+active states, and the new [NVIDIA CUDA backend](development/cuda-backend.md)
+opens another hardware path. Thanks to
+[Jose Manuel Monsalve Diaz](https://github.com/josemonsalve2) and AMD for the HIP
+contributions, and [Farrokh Labib](https://github.com/FarLab) for the CUDA
+backend. Both remain experimental, require source builds, and are never
+selected automatically.
+
+The shared test suite has grown alongside these execution choices: feature
+tests run across the modes that support them, and new backends inherit the
+existing tests for their supported features. Read
+[Less Work per Shot in Clifft](updates/less-work-per-shot.md) for the development
+story and local A/B measurements, or see the
+[full release notes](https://github.com/unitaryfoundation/clifft/blob/main/CHANGELOG.md).
+
 ## What's New in 0.10.1
 
 Clifft 0.10.1 fixes biased noise sampling in multi-shot
