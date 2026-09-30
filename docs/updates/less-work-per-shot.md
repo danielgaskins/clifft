@@ -1,4 +1,4 @@
-# Less Work per Shot in Clifft (v0.11.0 release candidate)
+# Less Work per Shot in Clifft (v0.11.0, September 2026)
 
 A near-Clifford experiment often compiles one circuit and samples it many
 times. The cost of those shots depends on more than the circuit's qubit count:
@@ -73,6 +73,13 @@ we wanted to explore broader QEC workflows beyond standalone sampling calls.
 Connecting to Sinter is a practical first step toward both: existing
 experiments can try Clifft while retaining Sinter's collection and analysis
 workflow.
+
+The standalone sampler benchmark now provides a concrete Clifford example:
+on surface-code d7/r7 with all-detector postselection, Clifft reaches
+**4.13 million attempted shots/s**, compared with **1.12 million for Stim**,
+a **3.69x** ratio under the same sampling protocol. See the
+[Performance guide](../guide/performance.md#clifford-postselection-with-stim)
+for the configuration and scope of that comparison.
 
 The new optional `clifft.sinter.PerfectionistSampler` supports experiments
 that accept a shot only when every detector is quiet. Any logical observable
