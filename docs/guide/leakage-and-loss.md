@@ -123,8 +123,66 @@ Omitting `initial_state` starts every site in `g`, which matches the standard
 Clifft convention that all qubits start in $\lvert 0 \rangle$. A model capable
 of leakage or loss requires a classifier whenever the circuit contains any
 physical-qubit measurement, even if the measured site cannot itself become
-noncomputational. `MPAD` is exempt because it appends a classical literal
-rather than measuring a site.
+noncomputational. `MPAD` and the status probes below are exempt because their
+record bits do not measure the site's computational state.
+
+## Nondestructive status checks
+
+`HERALD_LEAKAGE_EVENT` and `HERALD_LOSS_EVENT` report the status at a circuit
+position without changing the site's quantum state or occupation. Each plain
+qubit target appends one ordinary record bit, in target order:
+
+| Status | `HERALD_LEAKAGE_EVENT` | `HERALD_LOSS_EVENT` |
+|--------|------------------------|---------------------|
+| Computational | 0 | 0 |
+| `LEAK_G` or `LEAK_E` | 1 | 0 |
+| `LOST` | 0 | 1 |
+
+Status probes are perfect and take no arguments. Targets must be
+plain qubit indices without inversion.
+
+The result is available to `DETECTOR`, `OBSERVABLE_INCLUDE`, and record-controlled
+feedback. These probes require no classifier and leave the classifier `heralds`
+sidecar zero at their record slots. They report status at the time of the check,
+not the time of the underlying jump.
+
+```python
+from clifft import noncomp
+
+result = noncomp.sample(
+    """
+    LEAKAGE(1) 0
+    LOSS(1) 1
+    HERALD_LEAKAGE_EVENT 0 1
+    HERALD_LOSS_EVENT 0 1
+    CX rec[-1] 2
+    DETECTOR rec[-4]
+    OBSERVABLE_INCLUDE(0) rec[-1]
+    """,
+    noncomp.Model(),
+    shots=16,
+    seed=1,
+)
+assert (result.measurements == [1, 0, 0, 1]).all()
+assert result.detectors.all()
+assert result.observables.all()
+assert not result.heralds.any()
+```
+
+To model detection errors, apply `READOUT_NOISE` to the probe's record bit.
+This example uses a 2% false-positive rate and a 5% false-negative rate:
+
+```text
+HERALD_LEAKAGE_EVENT 0
+READOUT_NOISE(0.02, 0.05) rec[-1]
+```
+
+Use `READOUT_NOISE(0, p)` for missed detections only, or `READOUT_NOISE(p)` for
+symmetric errors. These errors affect the reported bit, leaving the site's
+quantum state and status unchanged.
+
+Like transition annotations, status probes require `noncomp.sample`;
+ordinary `clifft.compile` rejects them.
 
 ## Transitions: hooks and inline annotations
 

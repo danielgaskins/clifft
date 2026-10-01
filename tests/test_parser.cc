@@ -1395,10 +1395,17 @@ TEST_CASE("Parse MPAD does not affect num_qubits", "[parser]") {
 }
 
 TEST_CASE("Parse noisy MPAD decomposes to MPAD plus READOUT_NOISE", "[parser]") {
-    auto circuit = parse("MPAD(0.01) 1");
+    auto circuit = parse("MPAD(0.01) !1");
     REQUIRE(circuit.nodes.size() == 2);
     CHECK(circuit.nodes[0].gate == GateType::MPAD);
+    CHECK(circuit.nodes[0].targets[0].is_inverted());
+    CHECK(circuit.nodes[0].args[0] == 0.0);
     CHECK(circuit.nodes[1].gate == GateType::READOUT_NOISE);
+    CHECK(circuit.nodes[1].targets[0].is_rec());
+    CHECK(circuit.nodes[1].targets[0].value() == 0);
+    CHECK(circuit.nodes[1].args[0] == 0.01);
+    CHECK(circuit.num_measurements == 1);
+    CHECK(circuit.num_qubits == 0);
 }
 
 TEST_CASE("Parse MPAD rejects rec targets", "[parser]") {
@@ -1823,6 +1830,29 @@ TEST_CASE("GateTraits: measurements", "[gate_data]") {
     CHECK(!is_measurement(GateType::R));
 }
 
+TEST_CASE("GateTraits distinguish physical readouts from classical record writes", "[gate_data]") {
+    for (GateType gate :
+         {GateType::M, GateType::MX, GateType::MY, GateType::MR, GateType::MRX, GateType::MRY,
+          GateType::MPP, GateType::MXX, GateType::MYY, GateType::MZZ}) {
+        CAPTURE(gate_name(gate));
+        CHECK(is_measurement(gate));
+        CHECK(is_physical_measurement(gate));
+    }
+    for (GateType gate :
+         {GateType::MPAD, GateType::HERALD_LEAKAGE_EVENT, GateType::HERALD_LOSS_EVENT}) {
+        CAPTURE(gate_name(gate));
+        CHECK(is_measurement(gate));
+        CHECK_FALSE(is_physical_measurement(gate));
+    }
+    for (GateType gate :
+         {GateType::H, GateType::R, GateType::READOUT_NOISE, GateType::LEVEL_TRANSITION,
+          GateType::LEAKAGE, GateType::LOSS, GateType::EXP_VAL}) {
+        CAPTURE(gate_name(gate));
+        CHECK_FALSE(is_measurement(gate));
+        CHECK_FALSE(is_physical_measurement(gate));
+    }
+}
+
 TEST_CASE("GateTraits: measure-reset subset", "[gate_data]") {
     CHECK(is_measure_reset(GateType::MR));
     CHECK(is_measure_reset(GateType::MRX));
@@ -2126,4 +2156,30 @@ TEST_CASE("LEAKAGE parses its probability and rejects bad forms") {
     CHECK_THROWS_AS(parse("LEAKAGE(0.1, 0.2) 0\n"), ParseError);
     CHECK_THROWS_AS(parse("LEAKAGE(0.1) !0\n"), ParseError);
     CHECK_THROWS_AS(parse("M 0\nLEAKAGE(0.1) rec[-1]\n"), ParseError);
+}
+
+TEST_CASE("Status heralds preserve record positions and reject arguments", "[parser]") {
+    for (const std::string name : {"HERALD_LEAKAGE_EVENT", "HERALD_LOSS_EVENT"}) {
+        const auto circuit = parse("M 0\n" + name + " 4 2\nDETECTOR rec[-2] rec[-1]\n");
+        REQUIRE(circuit.num_qubits == 5);
+        REQUIRE(circuit.num_measurements == 3);
+        REQUIRE(circuit.nodes.size() == 4);
+        for (size_t i = 1; i <= 2; ++i) {
+            CHECK(circuit.nodes[i].gate == clifft::parse_gate_name(name));
+            CHECK(circuit.nodes[i].args.empty());
+        }
+        CHECK(circuit.nodes[1].targets[0].value() == 4);
+        CHECK(circuit.nodes[2].targets[0].value() == 2);
+        CHECK(circuit.nodes[3].targets[0] == clifft::Target::rec(1));
+        CHECK(circuit.nodes[3].targets[1] == clifft::Target::rec(2));
+        CHECK(parse(name + " 0").nodes[0].args.empty());
+
+        for (const std::string args :
+             {"(0)", "(0.25)", "(1)", "(-0.1)", "(1.1)", "(nan)", "(inf)", "(0.1, 0.2)"}) {
+            CHECK_THROWS_AS(parse(name + args + " 0"), ParseError);
+        }
+        for (const std::string target : {"", "!0", "X0", "rec[-1]"}) {
+            CHECK_THROWS_AS(parse("M 0\n" + name + " " + target), ParseError);
+        }
+    }
 }

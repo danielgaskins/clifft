@@ -396,6 +396,11 @@ class Parser {
                 throw ParseError(name + " probability must be finite and lie in [0, 1]", line_num);
             }
         }
+        if (is_noncomputational_herald(gate) && !args.empty()) {
+            throw ParseError(std::string(clifft::gate_name(gate)) +
+                                 " takes no arguments; use READOUT_NOISE on its record bit",
+                             line_num);
+        }
         if (gate == GateType::READOUT_NOISE) {
             if (args.size() != 1 && args.size() != 2) {
                 throw ParseError(
@@ -716,6 +721,8 @@ class Parser {
 
         std::vector<Target> targets;
         GateArity arity = gate_arity(gate);
+        const bool accepts_measurement_modifiers =
+            is_physical_measurement(gate) || gate == GateType::MPAD;
 
         // Tokenize targets.
         std::string_view remaining = targets_str;
@@ -743,7 +750,7 @@ class Parser {
                     "probabilities instead",
                     line_num);
             }
-            if (!is_measurement(gate) && inverted) {
+            if (!accepts_measurement_modifiers && inverted) {
                 throw_invalid_target_modifiers(token, clifft::gate_name(gate), line_num);
             }
 
@@ -793,9 +800,8 @@ class Parser {
             case GateArity::SINGLE:
                 // One AstNode per target.
                 for (Target t : targets) {
-                    // For noisy measurements M(p), MX(p), MY(p): decompose into
-                    // clean measurement followed by READOUT_NOISE.
-                    bool is_noisy_meas = is_measurement(gate) && arg > 0.0;
+                    // Physical readouts and MPAD accept inline symmetric record noise.
+                    bool is_noisy_meas = accepts_measurement_modifiers && arg > 0.0;
 
                     // Pass args through directly; zero-arg gates get an empty vector.
                     std::vector<double> node_args = args;
@@ -995,9 +1001,9 @@ class Parser {
 
             bool inverted = false;
             if (product_str[pos] == '!') {
-                const bool supports_inversion = is_measurement(gate) || gate == GateType::SPP ||
-                                                gate == GateType::SPP_DAG ||
-                                                gate == GateType::TPP || gate == GateType::TPP_DAG;
+                const bool supports_inversion =
+                    is_physical_measurement(gate) || gate == GateType::SPP ||
+                    gate == GateType::SPP_DAG || gate == GateType::TPP || gate == GateType::TPP_DAG;
                 if (!supports_inversion) {
                     throw_invalid_target_modifiers(target_token_at(product_str, pos), gate_name,
                                                    line_num);
@@ -1376,9 +1382,7 @@ class Parser {
             }
         }
 
-        // Update measurement count for visible measurements.
-        // is_measurement includes M, MX, MY, MR, MRX, MPP.
-        // R and RX are resets without visible measurements (is_reset returns true).
+        // Padding and status probes occupy record slots just like physical readouts.
         if (is_measurement(node.gate)) {
             circuit.num_measurements++;
         }

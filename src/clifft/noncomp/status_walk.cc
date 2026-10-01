@@ -9,6 +9,14 @@
 
 namespace clifft {
 
+void validate_herald_arguments(const AstNode& node, uint32_t op_index, std::string_view caller) {
+    if (!node.args.empty()) {
+        throw std::invalid_argument(std::string(caller) + ": " + std::string(gate_name(node.gate)) +
+                                    " at op " + std::to_string(op_index) +
+                                    " takes no arguments; use READOUT_NOISE on its record bit");
+    }
+}
+
 double inline_transition_probability(GateType gate, const std::vector<double>& args,
                                      uint32_t op_index, std::string_view caller) {
     if (!is_inline_noncomputational_annotation(gate)) {
@@ -86,7 +94,7 @@ OperandAction operand_action(GateType gate, QubitStatus status,
     if (is_measure_reset(gate)) {
         return OperandAction::Apply;
     }
-    if (is_measurement(gate)) {
+    if (is_physical_measurement(gate)) {
         return (gate == GateType::M || gate == GateType::MX || gate == GateType::MY)
                    ? OperandAction::Apply
                    : OperandAction::Reject;
@@ -148,7 +156,7 @@ OrdinaryStep advance_ordinary_node(const AstNode& node, uint32_t op_index,
     for (const QubitOperand& operand : operands) {
         const uint32_t qubit = operand.qubit;
         const QubitStatus pre = status[qubit];
-        if (is_measurement(gate) && !is_computational(pre)) {
+        if (is_physical_measurement(gate) && !is_computational(pre)) {
             classified = ClassifiedOperand{qubit, noncomp_level(pre)};
         }
         status[qubit] = drop_op ? pre : normal_post_op_status(pre, gate, operand.role, policy);
